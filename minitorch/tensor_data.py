@@ -42,8 +42,7 @@ def index_to_position(index: Index, strides: Strides) -> int:
     Returns:
         Position in storage
     """
-
-    raise NotImplementedError("Need to include this file from past assignment.")
+    return int(np.sum(np.asarray(index) * np.asarray(strides)))
 
 
 def to_index(ordinal: int, shape: Shape, out_index: OutIndex) -> None:
@@ -59,7 +58,8 @@ def to_index(ordinal: int, shape: Shape, out_index: OutIndex) -> None:
         out_index : return index corresponding to position.
 
     """
-    raise NotImplementedError("Need to include this file from past assignment.")
+    strides = np.append(np.cumprod(shape[::-1])[::-1], 1)
+    out_index[:] = (ordinal % strides[:-1]) // strides[1:]
 
 
 def broadcast_index(
@@ -81,7 +81,7 @@ def broadcast_index(
     Returns:
         None
     """
-    raise NotImplementedError("Need to include this file from past assignment.")
+    out_index[:] = big_index[-len(shape):] % shape
 
 
 def shape_broadcast(shape1: UserShape, shape2: UserShape) -> UserShape:
@@ -98,7 +98,15 @@ def shape_broadcast(shape1: UserShape, shape2: UserShape) -> UserShape:
     Raises:
         IndexingError : if cannot broadcast
     """
-    raise NotImplementedError("Need to include this file from past assignment.")
+    if len(shape1) < len(shape2):
+        shape1, shape2 = shape2, shape1
+    common_shape = list(shape1)
+    for i in range(-len(shape2), 0):
+        if shape1[i] == 1:
+            common_shape[i] = shape2[i]
+        elif shape2[i] != 1 and shape1[i] != shape2[i]:
+            raise IndexingError
+    return tuple(common_shape)
 
 
 def strides_from_shape(shape: UserShape) -> UserStrides:
@@ -209,7 +217,7 @@ class TensorData:
         Permute the dimensions of the tensor.
 
         Args:
-            *order: a permutation of the dimensions
+            order (list): a permutation of the dimensions
 
         Returns:
             New `TensorData` with the same storage and a new dimension order.
@@ -218,7 +226,10 @@ class TensorData:
             range(len(self.shape))
         ), f"Must give a position to each dimension. Shape: {self.shape} Order: {order}"
 
-        raise NotImplementedError("Need to include this file from past assignment.")
+        def tuple_permute(tpl, ordr):
+            return tuple(map(int, np.array(tpl)[np.array(ordr)]))
+
+        return TensorData(self._storage, tuple_permute(self.shape, order), tuple_permute(self.strides, order))
 
     def to_string(self) -> str:
         s = ""

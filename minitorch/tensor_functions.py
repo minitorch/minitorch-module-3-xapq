@@ -98,52 +98,75 @@ class Add(Function):
 
 class Mul(Function):
     @staticmethod
-    def forward(ctx: Context, a: Tensor, b: Tensor) -> Tensor:
-        raise NotImplementedError("Need to include this file from past assignment.")
+    def forward(ctx: Context, t1: Tensor, t2: Tensor) -> Tensor:
+        ctx.save_for_backward(t1, t2)
+        return t1.f.mul_zip(t1, t2)
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, Tensor]:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        t1, t2 = ctx.saved_values
+        return grad_output.f.mul_zip(grad_output, t2), grad_output.f.mul_zip(grad_output, t1)
+
+
+# DISCLAIMER: all of the following templates were initially filled in by gpt-o1-preview after being prompted with the definition of class TensorBackend and implementations of Inv, Add and Mul as examples.
+# GPT failed to write LT.backward and EQ.backward (couldn't underatand how to create a tensor of zeros)
+# GPT failed to write Sigmoid.forward (couldn't underatand how to create a tensor of ones)
+# GPT completely failed on Permute
 
 
 class Sigmoid(Function):
     @staticmethod
     def forward(ctx: Context, t1: Tensor) -> Tensor:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        output = t1.f.sigmoid_map(t1)
+        ctx.save_for_backward(output)
+        return output
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tensor:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        (output,) = ctx.saved_values
+        one_minus_output = grad_output.f.add_zip(
+            ones(grad_output.shape), grad_output.f.neg_map(output)
+        )
+        sigmoid_derivative = grad_output.f.mul_zip(output, one_minus_output)
+        return grad_output.f.mul_zip(grad_output, sigmoid_derivative)
 
 
 class ReLU(Function):
     @staticmethod
     def forward(ctx: Context, t1: Tensor) -> Tensor:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        output = t1.f.relu_map(t1)
+        ctx.save_for_backward(t1)
+        return output
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tensor:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        (t1,) = ctx.saved_values
+        return grad_output.f.relu_back_zip(t1, grad_output)
 
 
 class Log(Function):
     @staticmethod
     def forward(ctx: Context, t1: Tensor) -> Tensor:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        ctx.save_for_backward(t1)
+        return t1.f.log_map(t1)
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tensor:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        (t1,) = ctx.saved_values
+        return grad_output.f.log_back_zip(t1, grad_output)
 
 
 class Exp(Function):
     @staticmethod
     def forward(ctx: Context, t1: Tensor) -> Tensor:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        output = t1.f.exp_map(t1)
+        ctx.save_for_backward(output)
+        return output
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tensor:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        (output,) = ctx.saved_values
+        return grad_output.f.mul_zip(grad_output, output)
 
 
 class Sum(Function):
@@ -170,37 +193,45 @@ class All(Function):
 class LT(Function):
     @staticmethod
     def forward(ctx: Context, a: Tensor, b: Tensor) -> Tensor:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        return a.f.lt_zip(a, b)
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, Tensor]:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        zeros = grad_output.zeros()
+        return zeros, zeros
 
 
 class EQ(Function):
     @staticmethod
     def forward(ctx: Context, a: Tensor, b: Tensor) -> Tensor:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        return a.f.eq_zip(a, b)
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, Tensor]:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        zeros = grad_output.zeros()
+        return zeros, zeros
 
 
 class IsClose(Function):
     @staticmethod
     def forward(ctx: Context, a: Tensor, b: Tensor) -> Tensor:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        return a.f.is_close_zip(a, b)
 
 
 class Permute(Function):
     @staticmethod
     def forward(ctx: Context, a: Tensor, order: Tensor) -> Tensor:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        n_dims = order.shape[0]
+        inv_order = np.empty(n_dims, dtype=int)
+        for i in range(n_dims):
+            inv_order[int(order[i])] = i
+        ctx.save_for_backward(inv_order)
+        return a._new(a._tensor.permute(*[int(order[i]) for i in range(n_dims)]))
 
     @staticmethod
-    def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, float]:
-        raise NotImplementedError("Need to include this file from past assignment.")
+    def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, None]:
+        (inv_order,) = ctx.saved_values
+        return grad_output._new(grad_output._tensor.permute(*inv_order)), 0.
 
 
 class View(Function):
@@ -256,6 +287,22 @@ class MatMul(Function):
 
 
 # Helpers for Constructing tensors
+def ones(shape: UserShape, backend: TensorBackend = SimpleBackend) -> Tensor:
+    """
+    Produce a ones tensor of size `shape`.
+
+    Args:
+        shape : shape of tensor
+        backend : tensor backend
+
+    Returns:
+        new tensor
+    """
+    return minitorch.Tensor.make(
+        [1] * int(operators.prod(shape)), shape, backend=backend
+    )
+
+
 def zeros(shape: UserShape, backend: TensorBackend = SimpleBackend) -> Tensor:
     """
     Produce a zero tensor of size `shape`.
